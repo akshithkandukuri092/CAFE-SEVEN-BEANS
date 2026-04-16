@@ -1,0 +1,181 @@
+/* RESET */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background: #f7f0e8;
+  /* café cream */
+  color: #2b1a10;
+  /* dark brown text */
+}
+
+/* NAVBAR */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 60px;
+  align-items: center;
+  background: #2b1a10;
+  /* coffee dark */
+  position: fixed;
+  width: 100%;
+  top: 0;
+  z-index: 1000;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo img {
+  width: 40px;
+}
+
+nav {
+  display: flex;
+  gap: 25px;
+}
+
+nav button {
+  background: none;
+  border: none;
+  color: #d7c2a8;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+nav button:hover {
+  color: #fff5e6;
+}
+
+.auth {
+  display: flex;
+  gap: 15px;
+}
+
+.auth a {
+  text-decoration: none;
+  color: #ccc;
+}
+
+.signup {
+  background: #6b3a1f;
+  /* coffee */
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 6px;
+}
+
+/* HERO */
+.hero {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 0 60px;
+  background: url("/workspace.jpeg") center/cover no-repeat;
+  position: relative;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+}
+
+.hero h1 {
+  font-size: 3rem;
+}
+
+.primary {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background: #c89b3c;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* STORY */
+.story {
+  display: flex;
+  padding: 80px 60px;
+  gap: 40px;
+}
+
+.story-img img {
+  width: 100%;
+  border-radius: 10px;
+}
+
+/* SPACES */
+.spaces {
+  padding: 80px 60px;
+}
+
+.cards {
+  display: flex;
+  gap: 20px;
+}
+
+.card {
+  background: #1a1a1a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.card img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+
+/* EXPERIENCE */
+.experience {
+  display: flex;
+  justify-content: space-around;
+  padding: 40px;
+  background: #f3e7dc;
+}
+
+/* TESTIMONIALS */
+.testimonials {
+  padding: 60px;
+}
+
+.reviews {
+  display: flex;
+  gap: 20px;
+}
+
+/* CTA */
+.cta {
+  height: 300px;
+  background: url("/birthday.jpg") center/cover no-repeat;
+  position: relative;
+}
+
+.cta-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  padding-top: 100px;
+}
+
+/* FOOTER */
+footer {
+  text-align: center;
+  padding: 20px;
+  background: #2b1a10;
+  color: #d7c2a8;
+}
