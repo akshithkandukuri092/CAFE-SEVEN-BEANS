@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "./Authcontext";
+import { useAuth } from "./AuthContext";
 import {
-  saveBooking,
-  getAvailabilityMap,
+
   UNITS_FOR_TYPE,
   getTodayString,
 } from "./Bookingstore";
@@ -89,11 +88,16 @@ export const MENU_ITEMS = [
 
 const STEPS = ["Space & Date", "Pick Your Seat", "Food Pre-order", "Review & Confirm"];
 
-export function formatTime(t) {
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+function formatTime(t) {
+  if (!t) return "";   // ✅ prevent crash
+
+  const [h] = t.toString().split(":");
+  const hour = parseInt(h);
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+
+  return `${display} ${suffix}`;
 }
 
 function slotToMinutes(t) {
@@ -113,185 +117,141 @@ function isSlotTooSoon(date, slotTime, advanceMinutes) {
 }
 
 // ── Multi-slot SeatMap ────────────────────────────────────────────
-function SeatMap({ space, date, selectedUnit, selectedSlots, onSelect }) {
+function SeatMap({ space, date, selectedUnit, selectedSlots, onSelect, refreshKey }) {
   const [availMap, setAvailMap] = useState({});
   const units = UNITS_FOR_TYPE[space.id] || [];
 
+  // ✅ BACKEND AVAILABILITY
   useEffect(() => {
-    setAvailMap(getAvailabilityMap(space.id, date, space.slots));
-  }, [space.id, date]);
+    // Fetch availability on load or when space/date changes
+    fetch(`http://localhost:5000/availability?space=${space.label}&date=${date}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) {
+          setAvailMap({});
+          return;
+        }
 
-  const legend = [
-    { status: "free", label: "Available" },
-    { status: "selected", label: "Your Pick" },
-    { status: "booked", label: "Booked" },
-    { status: "past", label: "Unavailable" },
-  ];
+        const map = {};
 
+        data.forEach(b => {
+          if (!map[b.unit_id]) map[b.unit_id] = {};
+
+          for (let i = b.start_time; i < b.end_time; i++) {
+            const slot = `${String(i).padStart(2, "0")}:00`;
+            map[b.unit_id][slot] = "booked";
+          }
+        });
+
+        setAvailMap(map);
+      })
+      .catch(() => setAvailMap({}));
+  }, [space.id, date, refreshKey]);
+
+  // ✅ CLICK HANDLER
   const handleSeatClick = (unitId, slot) => {
-    const status = availMap[unitId]?.[slot] ?? "free";
-    if (status !== "free") return;
-    if (isSlotTooSoon(date, slot, space.advanceMinutes)) return;
+    if (availMap[unitId]?.[slot]) return;
 
-    if (!space.multiSlot) {
-      if (selectedUnit === unitId && selectedSlots.includes(slot)) {
-        onSelect("", []);
-      } else {
-        onSelect(unitId, [slot]);
-      }
-      return;
-    }
-
-    // Multi-slot logic: toggle within same unit, must be consecutive
-    if (selectedUnit && selectedUnit !== unitId) {
-      // Different unit — reset
+    if (!selectedUnit || selectedUnit !== unitId) {
       onSelect(unitId, [slot]);
       return;
     }
 
-    const current = [...selectedSlots];
-    const idx = current.indexOf(slot);
-    if (idx >= 0) {
-      // Deselect: remove from end only (keep contiguous)
-      const removed = current.filter(s => s !== slot);
-      // Only allow removing if it's first or last
-      const sortedCurrent = [...current].sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
-      if (slot === sortedCurrent[0] || slot === sortedCurrent[sortedCurrent.length - 1]) {
-        onSelect(unitId, removed.length > 0 ? removed : null);
-      }
-      return;
-    }
+    const current = selectedSlots;
 
-    // Add: only if adjacent to current selection
     if (current.length === 0) {
       onSelect(unitId, [slot]);
       return;
     }
+
     const allSlots = space.slots;
-    const sortedSel = [...current].sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
+
+    const sortedSel = [...current].sort(
+      (a, b) => slotToMinutes(a) - slotToMinutes(b)
+    );
+
     const firstIdx = allSlots.indexOf(sortedSel[0]);
     const lastIdx = allSlots.indexOf(sortedSel[sortedSel.length - 1]);
     const thisIdx = allSlots.indexOf(slot);
+
     if (thisIdx === firstIdx - 1 || thisIdx === lastIdx + 1) {
       onSelect(unitId, [...current, slot]);
     } else {
-      // Not adjacent — start fresh
       onSelect(unitId, [slot]);
     }
   };
 
+  // ✅ STATUS
   const getSeatStatus = (unitId, slot) => {
-    const isSelected = selectedUnit === unitId && selectedSlots.includes(slot);
+    const isSelected =
+      selectedUnit === unitId && selectedSlots.includes(slot);
+
     if (isSelected) return "selected";
+
     const mapStatus = availMap[unitId]?.[slot] ?? "free";
+
     if (mapStatus !== "free") return mapStatus;
+    const now = new Date();
+    const slotTime = new Date(`${date}T${slot}:00`);
+
+    if (date === getTodayString()) {
+      const diffMinutes = (slotTime - now) / (1000 * 60);
+
+      if (diffMinutes < (space.advanceMinutes || 0)) {
+        return "past";
+      }
+    }
+
     if (isSlotTooSoon(date, slot, space.advanceMinutes)) return "past";
+
     return "free";
   };
 
-  const totalSelectedHours = space.durationHoursPerSlot
-    ? selectedSlots.length * space.durationHoursPerSlot
-    : selectedSlots.length;
-
-  const pricePerUnit = space.durationHoursPerSlot
-    ? space.price * space.durationHoursPerSlot
-    : space.price;
-
   return (
-    <div className="sm-wrap">
-      <div className="sm-legend">
-        {legend.map(l => (
-          <div className="sm-legend-item" key={l.status}>
-            <div className={`sm-legend-dot ${l.status}`} />
-            <span>{l.label}</span>
+    <div>
+      <div className="sm-row sm-header">
+        <div className="sm-row-label-empty"></div>
+        {space.slots.map(slot => (
+          <div key={slot} className="sm-slot-header">
+            {formatTime(slot)}
           </div>
         ))}
       </div>
+      {units.map(unit => (
+        <div className="sm-row" key={unit.id}>
+          <div className="sm-row-label-empty">
+            <span className="sm-unit-icon">{unit.icon}</span>
+            <span>{unit.label}</span>
+          </div>
 
-      {space.multiSlot && (
-        <div className="sm-multi-hint">
-          💡 Select multiple time slots for a longer session. Slots must be consecutive within the same {space.id === "birthday" ? "hall" : "pod/room"}.
-        </div>
-      )}
-
-      {space.advanceMinutes > 0 && (
-        <div className="sm-advance-note">
-          ⏱ Bookings must be made at least {space.advanceMinutes} minutes before the slot time. Greyed slots are unavailable.
-        </div>
-      )}
-
-      <div className="sm-screen">
-        <span>⬆ All seats face this direction</span>
-      </div>
-
-      <div className="sm-grid-wrap">
-        <div className="sm-col-headers">
-          <div className="sm-row-label-empty" />
-          {space.slots.map(slot => (
-            <div className="sm-col-header" key={slot}>{formatTime(slot)}</div>
-          ))}
-        </div>
-
-        {units.map(unit => (
-          <div className="sm-row" key={unit.id}>
-            <div className="sm-row-label">
-              <span className="sm-unit-icon">{unit.icon}</span>
-              <span>{unit.label}</span>
-            </div>
+          <div className="sm-row">
             {space.slots.map(slot => {
               const st = getSeatStatus(unit.id, slot);
-              const clickable = st === "free" || st === "selected";
+
               return (
+
                 <button
                   key={slot}
                   className={`sm-seat ${st}`}
-                  disabled={!clickable}
+                  disabled={st !== "free" && st !== "selected"}
                   onClick={() => handleSeatClick(unit.id, slot)}
-                  title={
-                    st === "booked" ? "Already booked" :
-                      st === "past" ? "Unavailable / too soon" :
-                        st === "selected" ? `Selected — ${unit.label} at ${formatTime(slot)}` :
-                          `Book ${unit.label} at ${formatTime(slot)}`
-                  }
                 >
-                  {st === "selected" ? "✓" : st === "booked" ? "✕" : st === "past" ? "—" : ""}
+                  {st === "selected" ? "✓" : st === "booked" ? "✕" : ""}
                 </button>
               );
             })}
           </div>
-        ))}
-      </div>
-
-      {selectedUnit && selectedSlots.length > 0 && (() => {
-        const unit = units.find(u => u.id === selectedUnit);
-        const sorted = [...selectedSlots].sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
-        return (
-          <div className="sm-selection-bar">
-            <div className="sm-selection-info">
-              <span className="sm-selection-icon">{unit?.icon}</span>
-              <div>
-                <div className="sm-selection-title">
-                  {unit?.label} · {formatTime(sorted[0])}{sorted.length > 1 ? ` — ${formatTime(sorted[sorted.length - 1])}` : ""}
-                </div>
-                <div className="sm-selection-sub">
-                  {sorted.length} slot{sorted.length > 1 ? "s" : ""} selected
-                  {" · "}{totalSelectedHours} hour{totalSelectedHours > 1 ? "s" : ""} total
-                  {space.multiSlot && " · Click adjacent slots to extend"}
-                </div>
-              </div>
-            </div>
-            <div className="sm-selection-price">
-              {space.price === 0 ? "Free" : `₹${(pricePerUnit * selectedSlots.length).toLocaleString("en-IN")}`}
-            </div>
-          </div>
-        );
-      })()}
+        </div>
+      ))}
     </div>
   );
 }
 
+
+
 // ── Main Booking component ────────────────────────────────────────
 export default function Booking() {
+  const [refreshKey, setRefreshKey] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -369,45 +329,68 @@ export default function Booking() {
   }, []);
 
   const handleConfirm = () => {
-    setSaving(true);
-    setBookingError("");
-    const foodItems = Object.entries(addons).map(([id, { qty, price }]) => {
-      const item = MENU_ITEMS.find(m => m.id === id);
-      return { id, name: item.name, qty, price };
-    });
-    try {
-      saveBooking(user.uid, {
-        spaceId,
-        spaceLabel: space.label,
-        spaceIcon: space.icon,
-        unitId: selectedUnit,
-        unitLabel,
-        unitIcon,
-        date,
-        slot: firstSlot,
-        slots: sortedSlots,
-        duration: durationLabel,
-        durationHrs: totalHours,
-        guests,
-        spacePrice,
-        foodItems,
-        foodTotal,
-        grandTotal,
-        userName: user.displayName || user.email.split("@")[0],
-        userEmail: user.email,
-      });
-      navigate("/dashboard", { state: { justBooked: true } });
-    } catch (err) {
-      if (err.message === "NO_UNIT_AVAILABLE") {
-        setBookingError("This seat was just taken by someone else. Please pick another.");
-        setSelectedUnit("");
-        setSelectedSlots([]);
-        setStep(1);
-      } else {
-        setBookingError("Something went wrong. Please try again.");
-      }
-      setSaving(false);
+    console.log("CLICKED");
+    console.log("selectedUnit:", selectedUnit);
+    console.log("selectedSlots:", selectedSlots);
+    console.log("BUTTON CLICKED");
+
+    if (!selectedUnit || selectedSlots.length === 0) {
+      alert("Select slot first");
+      return;
     }
+
+    const start = parseInt(selectedSlots[0].split(":")[0]);
+    const last = selectedSlots[selectedSlots.length - 1];
+
+    const duration = space.durationHoursPerSlot || 1;
+    const end = parseInt(last.split(":")[0]) + duration;
+
+    console.log("FETCH START");
+
+    console.log("SENDING:", {
+      unit_id: selectedUnit,
+      space: space.label,
+      date
+    });
+
+
+    fetch("http://localhost:5000/book", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: user?.email,   // ✅ IMPORTANT (email fix)
+        space: space.label,
+        date: date,
+        start_time: start,
+        end_time: end,
+        price_per_hour: space.price,
+        food_total: foodTotal,
+        space_amount: spacePrice,
+        unit_id: selectedUnit
+      })
+    })
+      .then(async res => {
+        const data = await res.json();
+        console.log("STATUS:", res.status);
+        console.log("RESPONSE:", data);
+
+        if (!res.ok) {
+          alert(data.error || "Booking failed");
+          return;
+        }
+
+        alert("Booking Successful ₹" + data.total_amount);
+
+        setSelectedSlots([]);
+        setSelectedUnit("");
+        navigate("/my-bookings");
+      })
+      .catch(err => {
+        console.error("FETCH ERROR:", err);
+        alert("Booking failed (network)");
+      });
   };
 
   return (
@@ -416,6 +399,9 @@ export default function Booking() {
       <header className="bk-header">
         <button className="bk-back-btn" onClick={() => navigate("/")}>← Seven Beans</button>
         <div className="bk-header-title">Reserve a Space</div>
+        <button onClick={() => navigate("/my-bookings")}>
+          My Bookings
+        </button>
         <div className="bk-user-pill">
           {user?.photoURL
             ? <img src={user.photoURL} className="bk-avatar-img" alt="avatar" />
@@ -536,7 +522,35 @@ export default function Booking() {
               selectedUnit={selectedUnit}
               selectedSlots={selectedSlots}
               onSelect={handleSeatSelect}
+              refreshKey={refreshKey}
             />
+            {
+
+              selectedUnit && selectedSlots.length > 0 && (() => {
+                const unit = UNITS_FOR_TYPE[spaceId]?.find(u => u.id === selectedUnit);
+                const sorted = [...selectedSlots].sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
+                return (
+                  <div className="sm-selection-bar">
+                    <div className="sm-selection-info">
+                      <span className="sm-selection-icon">{unit?.icon}</span>
+                      <div>
+                        <div className="sm-selection-title">
+                          {unit?.label} · {sorted[0] ? formatTime(sorted[0]) : ""}{sorted.length > 1 ? ` — ${sorted.length > 1 ? formatTime(sorted[sorted.length - 1]) : ""}` : ""}
+                        </div>
+                        <div className="sm-selection-sub">
+                          {sorted.length} slot{sorted.length > 1 ? "s" : ""} selected
+                          {" · "}{totalHours} hour{totalHours > 1 ? "s" : ""} total
+                          {space.multiSlot && " · Click adjacent slots to extend"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="sm-selection-price">
+                      {space.price === 0 ? "Free" : `₹${(((space.price * totalHours))).toLocaleString("en-IN")}`}
+                    </div>
+                  </div>
+                );
+              })()
+            }
 
             <div className="bk-step-nav" style={{ marginTop: 24 }}>
               <button className="bk-prev-btn" onClick={() => setStep(0)}>← Back</button>
@@ -679,13 +693,19 @@ export default function Booking() {
 
             <div className="bk-step-nav">
               <button className="bk-prev-btn" onClick={() => setStep(2)}>← Back</button>
-              <button className="bk-confirm-btn" onClick={handleConfirm} disabled={saving}>
-                {saving ? "Saving…" : "Confirm Booking ✓"}
+
+              <button
+                onClick={handleConfirm}
+                disabled={!selectedUnit || selectedSlots.length === 0}
+              >
+                Confirm Booking
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
 }
+// Save me!

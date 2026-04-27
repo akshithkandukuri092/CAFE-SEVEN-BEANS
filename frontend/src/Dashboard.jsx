@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "./Authcontext";
+import { useAuth } from "./AuthContext";
 import { getBookings, cancelBooking, saveReview, hasReviewed, getReviews, getCancellationBreakdown } from "./Bookingstore";
 import "./Dashboard.css";
 

@@ -580,9 +580,9 @@
 
 /* Individual seat cell */
 .sm-seat {
-  width: 80px;
+  width: 70px;
   min-width: 80px;
-  height: 46px;
+  height: 40px;
   border: none;
   border-left: 1px solid #e9eef6;
   font-size: 0.75rem;
@@ -1340,4 +1340,18 @@
   .bk-space-grid-main {
     grid-template-columns: 1fr;
   }
+}
+
+.sm-header {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.sm-slot-header {
+  width: 70px;       
+  text-align: center;
+  font-size: 12px;
+  white-space: nowrap; 
 }

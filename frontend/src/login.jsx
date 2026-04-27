@@ -7,8 +7,8 @@ import {
   fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { auth, provider } from "./Firebase";
-import { useAuth } from "./Authcontext";
+import { auth, provider } from "./firebase";
+import { useAuth } from "./AuthContext";
 import "./login.css";
 
 function Login({ defaultSignUp = false }) {
